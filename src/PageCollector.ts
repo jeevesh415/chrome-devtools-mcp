@@ -62,7 +62,7 @@ export class PageCollector<T> {
     collector: (item: T) => void,
   ) => ListenerMap<PageEvents>;
   #listeners = new WeakMap<Page, ListenerMap>();
-  #maxNavigationSaved = 3;
+  protected maxNavigationSaved = 3;
 
   /**
    * This maps a Page to a list of navigations with a sub-list
@@ -159,7 +159,7 @@ export class PageCollector<T> {
     }
     // Add the latest navigation first
     navigations.unshift([]);
-    navigations.splice(this.#maxNavigationSaved);
+    navigations.splice(this.maxNavigationSaved);
   }
 
   protected cleanupPageDestroyed(page: Page) {
@@ -183,7 +183,7 @@ export class PageCollector<T> {
     }
 
     const data: T[] = [];
-    for (let index = this.#maxNavigationSaved; index >= 0; index--) {
+    for (let index = this.maxNavigationSaved; index >= 0; index--) {
       if (navigations[index]) {
         data.push(...navigations[index]);
       }
@@ -272,13 +272,13 @@ class PageEventSubscriber {
     if (this.#issueAggregator) {
       this.#issueAggregator.removeEventListener(
         DevTools.IssueAggregatorEvents.AGGREGATED_ISSUE_UPDATED,
-        this.#onAggregatedissue,
+        this.#onAggregatedIssue,
       );
     }
     this.#issueAggregator = new DevTools.IssueAggregator(this.#issueManager);
     this.#issueAggregator.addEventListener(
       DevTools.IssueAggregatorEvents.AGGREGATED_ISSUE_UPDATED,
-      this.#onAggregatedissue,
+      this.#onAggregatedIssue,
     );
   }
 
@@ -303,7 +303,7 @@ class PageEventSubscriber {
     if (this.#issueAggregator) {
       this.#issueAggregator.removeEventListener(
         DevTools.IssueAggregatorEvents.AGGREGATED_ISSUE_UPDATED,
-        this.#onAggregatedissue,
+        this.#onAggregatedIssue,
       );
     }
     void this.#session.send('Audits.disable').catch(() => {
@@ -311,7 +311,7 @@ class PageEventSubscriber {
     });
   }
 
-  #onAggregatedissue = (
+  #onAggregatedIssue = (
     event: DevTools.Common.EventTarget.EventTargetEvent<DevTools.AggregatedIssue>,
   ) => {
     if (this.#seenIssues.has(event.data)) {
@@ -409,5 +409,6 @@ export class NetworkCollector extends PageCollector<HTTPRequest> {
     } else {
       navigations.unshift([]);
     }
+    navigations.splice(this.maxNavigationSaved);
   }
 }

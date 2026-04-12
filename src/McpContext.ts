@@ -8,14 +8,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import type {TargetUniverse} from './DevtoolsUtils.js';
-import {
-  extractUrlLikeFromDevToolsTitle,
-  UniverseManager,
-  urlsEqual,
-} from './DevtoolsUtils.js';
+import {UniverseManager} from './DevtoolsUtils.js';
 import {McpPage} from './McpPage.js';
-import type {ListenerMap, UncaughtError} from './PageCollector.js';
-import {NetworkCollector, ConsoleCollector} from './PageCollector.js';
+import {
+  NetworkCollector,
+  ConsoleCollector,
+  type ListenerMap,
+  type UncaughtError,
+} from './PageCollector.js';
 import type {DevTools} from './third_party/index.js';
 import type {
   Browser,
@@ -47,14 +47,7 @@ import {
   type InstalledExtension,
 } from './utils/ExtensionRegistry.js';
 import {saveTemporaryFile} from './utils/files.js';
-import {WaitForHelper} from './WaitForHelper.js';
-
-export type {
-  EmulationSettings,
-  GeolocationOptions,
-  TextSnapshot,
-  TextSnapshotNode,
-} from './types.js';
+import {getNetworkMultiplierFromString} from './WaitForHelper.js';
 
 interface McpContextOptions {
   // Whether the DevTools windows are exposed as pages for debugging of DevTools.
@@ -67,23 +60,6 @@ interface McpContextOptions {
 
 const DEFAULT_TIMEOUT = 5_000;
 const NAVIGATION_TIMEOUT = 10_000;
-
-function getNetworkMultiplierFromString(condition: string | null): number {
-  const puppeteerCondition =
-    condition as keyof typeof PredefinedNetworkConditions;
-
-  switch (puppeteerCondition) {
-    case 'Fast 4G':
-      return 1;
-    case 'Slow 4G':
-      return 2.5;
-    case 'Fast 3G':
-      return 5;
-    case 'Slow 3G':
-      return 10;
-  }
-  return 1;
-}
 
 export class McpContext implements Context {
   browser: Browser;
@@ -653,37 +629,28 @@ export class McpContext implements Context {
   async detectOpenDevToolsWindows() {
     this.logger('Detecting open DevTools windows');
     const {pages} = await this.#getAllPages();
-    // Clear all devToolsPage references before re-detecting.
-    for (const mcpPage of this.#mcpPages.values()) {
-      mcpPage.devToolsPage = undefined;
-    }
-    for (const devToolsPage of pages) {
-      if (devToolsPage.url().startsWith('devtools://')) {
-        try {
-          this.logger('Calling getTargetInfo for ' + devToolsPage.url());
-          const data = await devToolsPage
-            // @ts-expect-error no types for _client().
-            ._client()
-            .send('Target.getTargetInfo');
-          const devtoolsPageTitle = data.targetInfo.title;
-          const urlLike = extractUrlLikeFromDevToolsTitle(devtoolsPageTitle);
-          if (!urlLike) {
-            continue;
-          }
-          // TODO: lookup without a loop.
-          for (const page of this.#pages) {
-            if (urlsEqual(page.url(), urlLike)) {
-              const mcpPage = this.#mcpPages.get(page);
-              if (mcpPage) {
-                mcpPage.devToolsPage = devToolsPage;
-              }
-            }
-          }
-        } catch (error) {
-          this.logger('Issue occurred while trying to find DevTools', error);
+
+    await Promise.all(
+      pages.map(async page => {
+        const mcpPage = this.#mcpPages.get(page);
+        if (!mcpPage) {
+          return;
         }
-      }
-    }
+
+        // Prior to Chrome 144.0.7559.59, the command fails,
+        // Some Electron apps still use older version
+        // Fall back to not exposing DevTools at all.
+        try {
+          if (await page.hasDevTools()) {
+            mcpPage.devToolsPage = await page.openDevTools();
+          } else {
+            mcpPage.devToolsPage = undefined;
+          }
+        } catch {
+          mcpPage.devToolsPage = undefined;
+        }
+      }),
+    );
   }
 
   getExtensionServiceWorkers(): ExtensionServiceWorker[] {
@@ -855,31 +822,6 @@ export class McpContext implements Context {
 
   recordedTraces(): TraceResult[] {
     return this.#traceResults;
-  }
-
-  getWaitForHelper(
-    page: Page,
-    cpuMultiplier: number,
-    networkMultiplier: number,
-  ) {
-    return new WaitForHelper(page, cpuMultiplier, networkMultiplier);
-  }
-
-  waitForEventsAfterAction(
-    action: () => Promise<unknown>,
-    options?: {timeout?: number},
-  ): Promise<void> {
-    const page = this.#getSelectedMcpPage();
-    const cpuMultiplier = page.cpuThrottlingRate;
-    const networkMultiplier = getNetworkMultiplierFromString(
-      page.networkConditions,
-    );
-    const waitForHelper = this.getWaitForHelper(
-      page.pptrPage,
-      cpuMultiplier,
-      networkMultiplier,
-    );
-    return waitForHelper.waitForEventsAfterAction(action, options);
   }
 
   getNetworkRequestStableId(request: HTTPRequest): number {

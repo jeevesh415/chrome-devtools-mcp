@@ -11,7 +11,7 @@ export const cliOptions = {
   autoConnect: {
     type: 'boolean',
     description:
-      'If specified, automatically connects to a browser (Chrome 144+) running locally from the user data directory identified by the channel param (default channel is stable). Requires the remoted debugging server to be started in the Chrome instance via chrome://inspect/#remote-debugging.',
+      'If specified, automatically connects to a browser (Chrome 144+) running locally from the user data directory identified by the channel param (default channel is stable). Requires the remote debugging server to be started in the Chrome instance via chrome://inspect/#remote-debugging.',
     conflicts: ['isolated', 'executablePath', 'categoryExtensions'],
     default: false,
     coerce: (value: boolean | undefined) => {
@@ -160,8 +160,9 @@ export const cliOptions = {
   },
   experimentalVision: {
     type: 'boolean',
-    describe: 'Whether to enable vision tools',
-    hidden: true,
+    describe:
+      'Whether to enable coordinate-based tools such as click_at(x,y). Usually requires a computer-use model able to produce accurate coordinates by looking at screenshots.',
+    hidden: false,
   },
   experimentalStructuredContent: {
     type: 'boolean',
@@ -216,6 +217,12 @@ export const cliOptions = {
     describe:
       'Set to true to include tools related to extensions. Note: This feature is only supported with a pipe connection. autoConnect is not supported.',
   },
+  categoryInPageTools: {
+    type: 'boolean',
+    hidden: true,
+    describe:
+      'Set to true to enable tools exposed by the inspected page itself',
+  },
   performanceCrux: {
     type: 'boolean',
     default: true,
@@ -226,7 +233,7 @@ export const cliOptions = {
     type: 'boolean',
     default: true,
     describe:
-      'Set to false to opt-out of usage statistics collection. Google collects usage data to improve the tool, handled under the Google Privacy Policy (https://policies.google.com/privacy). This is independent from Chrome browser metrics. Disabled if CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS or CI env variables are set.',
+      'Set to false to opt-out of usage statistics collection. Google collects usage data to improve the tool, handled under the Google Privacy Policy (https://policies.google.com/privacy). This is independent from Chrome browser metrics. Disabled if `CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS` or `CI` env variables are set.',
   },
   clearcutEndpoint: {
     type: 'string',
