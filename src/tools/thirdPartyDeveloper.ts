@@ -4,12 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {
-  zod,
-  ajv,
-  type JSONSchema7,
-  type ElementHandle,
-} from '../third_party/index.js';
+import {zod, ajv, type JSONSchema7} from '../third_party/index.js';
 
 import {ToolCategory} from './categories.js';
 import {definePageTool} from './ToolDefinition.js';
@@ -32,6 +27,7 @@ declare global {
       toolGroup?: ToolGroup<
         ToolDefinition & {execute: (args: Record<string, unknown>) => unknown}
       >;
+      stashedElements?: Element[];
       executeTool?: (
         toolName: string,
         args: Record<string, unknown>,
@@ -40,33 +36,32 @@ declare global {
   }
 }
 
-export const listInPageTools = definePageTool({
-  name: 'list_in_page_tools',
-  description: `Lists all in-page tools the page exposes for providing runtime information.
-  In-page tools can be called via the 'execute_in_page_tool()' MCP tool.
-  Alternatively, in-page tools can be executed by calling 'evaluate_script' and adding the
+export const listThirdPartyDeveloperTools = definePageTool({
+  name: 'list_3p_developer_tools',
+  description: `Lists all third-party developer tools the page exposes for providing runtime information.
+  Third-party developer tools can be called via the 'execute_3p_developer_tool()' MCP tool.
+  Alternatively, third-party developer tools can be executed by calling 'evaluate_script' and adding the
   following command to the script:
   'window.__dtmcp.executeTool(toolName, params)'
-  This might be helpful when the in-page-tools return non-serializable values or when composing
-  the in-page-tools with additional functionality.`,
+  This might be helpful when the third-party developer tools return non-serializable values or when composing
+  third-party developer tools with additional functionality.`,
   annotations: {
-    category: ToolCategory.IN_PAGE,
+    category: ToolCategory.THIRD_PARTY,
     readOnlyHint: true,
-    conditions: ['inPageTools'],
   },
   schema: {},
+  blockedByDialog: false,
   handler: async (_request, response, _context) => {
-    response.setListInPageTools();
+    response.setListThirdPartyDeveloperTools();
   },
 });
 
-export const executeInPageTool = definePageTool({
-  name: 'execute_in_page_tool',
+export const executeThirdPartyDeveloperTool = definePageTool({
+  name: 'execute_3p_developer_tool',
   description: `Executes a tool exposed by the page.`,
   annotations: {
-    category: ToolCategory.IN_PAGE,
+    category: ToolCategory.THIRD_PARTY,
     readOnlyHint: false,
-    conditions: ['inPageTools'],
   },
   schema: {
     toolName: zod.string().describe('The name of the tool to execute'),
@@ -75,6 +70,7 @@ export const executeInPageTool = definePageTool({
       .optional()
       .describe('The JSON-stringified parameters to pass to the tool'),
   },
+  blockedByDialog: false,
   handler: async (request, response) => {
     const toolName = request.params.toolName;
     let params: Record<string, unknown> = {};
@@ -92,23 +88,7 @@ export const executeInPageTool = definePageTool({
       }
     }
 
-    // Creates array of ElementHandles from the UIDs in the params.
-    // We do not replace the uids with the ElementsHandles yet, because
-    // the `evaluate` function only turns them into DOM elements if they
-    // are passed as non-nested arguments.
-    const handles: ElementHandle[] = [];
-    for (const value of Object.values(params)) {
-      if (
-        value instanceof Object &&
-        'uid' in value &&
-        typeof value.uid === 'string' &&
-        Object.keys(value).length === 1
-      ) {
-        handles.push(await request.page.getElementByUid(value.uid));
-      }
-    }
-
-    const toolGroup = request.page.getInPageTools();
+    const toolGroup = request.page.getThirdPartyDeveloperTools();
     const tool = toolGroup?.tools.find(t => t.name === toolName);
     if (!tool) {
       throw new Error(`Tool ${toolName} not found`);
@@ -122,33 +102,10 @@ export const executeInPageTool = definePageTool({
       );
     }
 
-    const result = await request.page.pptrPage.evaluate(
-      async (name, args, ...elements) => {
-        // Replace the UIDs with DOM elements.
-        for (const [key, value] of Object.entries(args)) {
-          if (
-            value instanceof Object &&
-            'uid' in value &&
-            typeof value.uid === 'string' &&
-            Object.keys(value).length === 1
-          ) {
-            args[key] = elements.shift();
-          }
-        }
-
-        if (!window.__dtmcp?.executeTool) {
-          throw new Error('No tools found on the page');
-        }
-        const toolResult = await window.__dtmcp.executeTool(name, args);
-
-        return {
-          result: toolResult,
-        };
-      },
+    await request.page.executeThirdPartyDeveloperTool(
       toolName,
       params,
-      ...handles,
+      response,
     );
-    response.appendResponseLine(JSON.stringify(result, null, 2));
   },
 });

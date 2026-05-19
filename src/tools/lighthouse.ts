@@ -22,7 +22,7 @@ import {definePageTool} from './ToolDefinition.js';
 
 export const lighthouseAudit = definePageTool({
   name: 'lighthouse_audit',
-  description: `Get Lighthouse score and reports for accessibility, SEO and best practices. This excludes performance. For performance audits, run ${startTrace.name}`,
+  description: `Get Lighthouse score and reports for accessibility, SEO, best practices, and agentic browsing. This excludes performance. For performance audits, run ${startTrace.name}`,
   annotations: {
     category: ToolCategory.DEBUGGING,
     readOnlyHint: false,
@@ -43,15 +43,23 @@ export const lighthouseAudit = definePageTool({
       .optional()
       .describe('Directory for reports. If omitted, uses temporary files.'),
   },
+  blockedByDialog: true,
   handler: async (request, response, context) => {
     const page = request.page;
-    const categories = ['accessibility', 'seo', 'best-practices'];
+    const categories = [
+      'accessibility',
+      'seo',
+      'best-practices',
+      'agentic-browsing',
+    ];
     const formats = ['json', 'html'] as OutputMode[];
     const {
       mode = 'navigation',
       device = 'desktop',
       outputDirPath,
     } = request.params;
+
+    context.validatePath(outputDirPath);
 
     const flags: Flags = {
       onlyCategories: categories,
@@ -107,8 +115,12 @@ export const lighthouseAudit = definePageTool({
       const report = generateReport(lhr, format);
       const data = encoder.encode(report);
       if (outputDirPath) {
-        const reportPath = path.join(outputDirPath, `report.${format}`);
-        const {filename} = await context.saveFile(data, reportPath);
+        const reportPath = path.join(outputDirPath, `report`);
+        const {filename} = await context.saveFile(
+          data,
+          reportPath,
+          `.${format}`,
+        );
         reportPaths.push(filename);
       } else {
         const {filepath} = await context.saveTemporaryFile(
